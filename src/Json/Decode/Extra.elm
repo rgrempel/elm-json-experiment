@@ -1,4 +1,4 @@
-module Json.Decode.Extra exposing (require, requireAt, default, defaultAt)
+module Json.Decode.Extra exposing (default, defaultAt, with)
 
 {-|
 
@@ -10,15 +10,14 @@ Experimental API for building JSON decoders.
 
 ## Decoding fields
 
-@docs require, requireAt, default, defaultAt
+@docs default, defaultAt, with
 
 -}
 
 import Json.Decode as Decode exposing (Decoder)
 
 
-{-| Decode a required field.
-
+{-| Given a decoder, apply it and then continue on to decode other things.
 
     type alias User =
         { id : Int
@@ -28,9 +27,9 @@ import Json.Decode as Decode exposing (Decoder)
 
     userDecoder : Decoder User
     userDecoder =
-        require int "id" <| \id ->
-        require int "followers" <| \followers ->
-        require string "email" <| \email ->
+        with (field int "id") <| \id ->
+        with (field int "followers") <| \followers ->
+        with (field string "email") <| \email ->
         succeed { id = id, followers = followers, email = email }
 
     result : Result String User
@@ -45,22 +44,9 @@ import Json.Decode as Decode exposing (Decoder)
     --> Ok { id = 123, followers = 42, email = "sam@example.com" }
 
 -}
-require : String -> Decoder a -> (a -> Decoder b) -> Decoder b
-require fieldName valDecoder andThenCallback =
-    Decode.field fieldName valDecoder
-        |> Decode.andThen andThenCallback
-
-
-{-| Decode a required nested field.
-
-This is the same as `required` except it uses `Json.Decode.at` in place of
-`Json.Decode.field`.
-
--}
-requireAt : List String -> Decoder a -> (a -> Decoder b) -> Decoder b
-requireAt path valDecoder andThenCallback =
-    Decode.at path valDecoder
-        |> Decode.andThen andThenCallback
+with : Decoder a -> (a -> Decoder b) -> Decoder b
+with decoder callback =
+    Decode.andThen callback decoder
 
 
 {-| Decode a field that may be missing or have a null value. If the field is
@@ -68,7 +54,6 @@ missing, then it decodes as the `fallback` value. If the field is present,
 then `valDecoder` is used to decode its value. If `valDecoder` fails on a
 `null` value, then the `fallback` is used as if the field were missing
 entirely.
-
 
     type alias User =
         { id : Int
@@ -78,9 +63,9 @@ entirely.
 
     userDecoder : Decoder User
     userDecoder =
-        require int "id" <| \id ->
-        default 0 int "followers" <| \followers ->
-        require string "email" <| \email ->
+        with (field int "id") <| \id ->
+        with (default 0 int "followers") <| \followers ->
+        with (field string "email") <| \email ->
         succeed { id = id, followers = followers, email = email }
 
     result : Result String User
@@ -100,16 +85,15 @@ values if you need to:
 
     userDecoder : Decoder User
     userDecoder =
-        require int "id" <| \id ->
-        default 0 (oneOf [ int, null 0 ]) "followers" <| \followers ->
-        require string "email" <| \email ->
+        with (field int "id") <| \id ->
+        with (default 0 (oneOf [ int, null 0 ]) "followers") <| \followers ->
+        with (field string "email") <| \email ->
         succeed { id = id, followers = followers, email = email }
 
 -}
-default : String -> Decoder a -> a -> (a -> Decoder b) -> Decoder b
-default fieldName valDecoder defaultVal andThenCallback =
+default : String -> Decoder a -> a -> Decoder a
+default fieldName valDecoder defaultVal =
     optionalDecoder (Decode.field fieldName Decode.value) valDecoder defaultVal
-        |> Decode.andThen andThenCallback
 
 
 {-| Decode an optional nested field.
@@ -118,10 +102,9 @@ This is the same as `default` except it uses `Json.Decode.at` in place of
 `Json.Decode.field`.
 
 -}
-defaultAt : List String -> Decoder a -> a -> (a -> Decoder b) -> Decoder b
-defaultAt path valDecoder defaultVal andThenCallback =
+defaultAt : List String -> Decoder a -> a -> Decoder a
+defaultAt path valDecoder defaultVal =
     optionalDecoder (Decode.at path Decode.value) valDecoder defaultVal
-        |> Decode.andThen andThenCallback
 
 
 optionalDecoder : Decoder Decode.Value -> Decoder a -> a -> Decoder a
